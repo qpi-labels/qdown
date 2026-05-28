@@ -116,4 +116,91 @@ function App() {
                   <label className="pdf-text-label-14-mono pdf-text-muted">Quality</label>
                   <select 
                     className="pdf-input" 
-      
+                    value={quality} 
+                    onChange={(e) => setQuality(e.target.value)}
+                    disabled={status === 'starting' || status === 'downloading'}
+                  >
+                    <option value="best">가장 좋은 화질 (Best Available)</option>
+                    <option value="1080p">1080p</option>
+                    <option value="720p">720p</option>
+                    <option value="480p">480p</option>
+                    <option value="audio">오디오 전용 (Audio Only - m4a)</option>
+                  </select>
+                </div>
+
+                {error && (
+                  <div className="pdf-text-copy-14 pdf-text-red pdf-bg-red" style={{ padding: '12px', borderRadius: '4px', backgroundColor: 'var(--color-red-light)' }}>
+                    {error}
+                  </div>
+                )}
+
+                {(status === 'starting' || status === 'downloading' || status === 'completed') && (
+                  <div className="pdf-flex-col pdf-gap-100 pdf-mt-100">
+                    <div className="pdf-flex-row pdf-justify-between pdf-items-center">
+                      <span className="pdf-text-label-14-mono pdf-text-muted">
+                        {status === 'starting' ? '시작하는 중...' : 
+                         status === 'downloading' ? '추출하는 중...' : 
+                         '완료!'}
+                      </span>
+                      <span className="pdf-text-label-14-mono">{progress.toFixed(1)}%</span>
+                    </div>
+                    {/* 가로 진행 바 (Horizontal Progress Bar) */}
+                    <div style={{ width: '100%', height: '8px', backgroundColor: 'var(--color-bg-secondary)', borderRadius: '4px', overflow: 'hidden' }}>
+                      <div style={{ 
+                        width: `${progress}%`, 
+                        height: '100%', 
+                        backgroundColor: 'var(--color-functional-red)',
+                        transition: 'width 0.3s ease'
+                      }} />
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  className="pdf-btn-primary pdf-btn-lg pdf-w-full pdf-mt-100"
+                  disabled={status === 'starting' || status === 'downloading'}
+                >
+                  {status === 'starting' || status === 'downloading' ? (
+                    <>
+                      <Loader2 size={18} className="pdf-animate-spin" style={{ animation: 'spin 1s linear infinite' }} />
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <Download size={18} />
+                      Download Video
+                    </>
+                  )}
+                </button>
+              </form>
+            </div>
+            
+            {/* 사용자 요청 푸터 영역 */}
+            <div className="pdf-mt-400 pdf-pt-200 pdf-border-top" style={{ marginTop: '32px', paddingTop: '16px' }}>
+              <div className="pdf-text-label-14-mono pdf-text-muted pdf-mb-050">
+                <a href="https://github.com/yt-dlp/yt-dlp" target="_blank" rel="noreferrer"
+                  style={{ color: 'var(--color-text-secondary)', textDecoration: 'none', transition: 'color 0.2s' }}
+                  onMouseOver={(e) => e.currentTarget.style.color = 'var(--color-text-primary)'}
+                  onMouseOut={(e) => e.currentTarget.style.color = 'var(--color-text-secondary)'}>View on GitHub ↗</a>
+              </div>
+              <div className="pdf-text-label-14-mono pdf-text-muted">
+                Made with yt-dlp
+              </div>
+            </div>
+
+          </div>
+          
+        </div>
+      </div>
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+export default App;

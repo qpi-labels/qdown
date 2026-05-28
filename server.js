@@ -129,4 +129,97 @@ app.post('/api/download/start', (req, res) => {
       const job = jobs.get(jobId);
       if (job && progress > job.progress) {
         job.progress = progress;
- 
+        job.status = 'downloading';
+        updateClients(job);
+      }
+    }
+  });
+
+  child.stderr.on('data', (data) => {
+    console.error(`[${jobId} ERROR]: ${data.toString().trim()}`);
+  });
+
+  child.on('close', (code) => {
+    const job = jobs.get(jobId);
+    if (!job) return;
+
+    if (code === 0) {
+      // Find the finalized file
+      const files = fs.readdirSync(DOWNLOAD_DIR);
+      const downloadedFile = files.find(f => f.startsWith(job.filePrefix));
+      
+      if (downloadedFile) {
+        job.status = 'completed';
+        job.progress = 100;
+        job.outputFile = downloadedFile;
+        updateClients(job);
+      } else {
+        job.status = 'error';
+        job.error = 'Downloaded file not found on disk';
+        updateClients(job);
+      }
+    } else {
+      job.status = 'error';
+      job.error = `Download failed. It may be restricted or requires a login.`;
+      updateClients(job);
+    }
+    
+    // Cleanup SSE clients after notifying completion/error
+    setTimeout(() => {
+      job.clients.forEach(c => c.end());
+      job.clients = [];
+    }, 3000);
+  });
+
+  res.json({ jobId });
+});
+
+app.get('/api/download/stream/:jobId', (req, res) => {
+  const jobId = req.params.jobId;
+  const job = jobs.get(jobId);
+  
+  if (!job) {
+    return res.status(404).json({ error: 'Job not found' });
+  }
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  // Send initial state immediately
+  res.write(`data: ${JSON.stringify({ status: job.status, progress: job.progress, error: job.error })}\n\n`);
+
+  job.clients.push(res);
+  
+  req.on('close', () => {
+    job.clients = job.clients.filter(c => c !== res);
+  });
+});
+
+app.get('/api/download/file/:jobId', (req, res) => {
+  const jobId = req.params.jobId;
+  const job = jobs.get(jobId);
+
+  if (!job || job.status !== 'completed' || !job.outputFile) {
+    return res.status(404).json({ error: 'File not ready or job not found' });
+  }
+
+  const filePath = path.join(DOWNLOAD_DIR, job.outputFile);
+  
+  res.download(filePath, job.outputFile, (err) => {
+    if (err) console.error(`[${jobId}] Error sending file:`, err);
+    try {
+      fs.unlinkSync(filePath);
+      console.log(`[${jobId}] Cleaned up file: ${filePath}`);
+    } catch (cleanupErr) {
+      console.error(`[${jobId}] Error cleaning up file:`, cleanupErr);
+    }
+    // Remove job to free memory
+    jobs.delete(jobId);
+  });
+});
+
+app.listen(PORT, '127.0.0.1', () => {
+  console.log(`Backend server running on http://127.0.0.1:${PORT}`);
+});
