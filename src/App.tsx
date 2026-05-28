@@ -114,18 +114,35 @@ function App() {
 
                 <div className="pdf-flex-col pdf-gap-050">
                   <label className="pdf-text-label-14-mono pdf-text-muted">Quality</label>
-                  <select 
-                    className="pdf-input" 
-                    value={quality} 
-                    onChange={(e) => setQuality(e.target.value)}
-                    disabled={status === 'starting' || status === 'downloading'}
-                  >
-                    <option value="best">가장 좋은 화질 (Best Available)</option>
-                    <option value="1080p">1080p</option>
-                    <option value="720p">720p</option>
-                    <option value="480p">480p</option>
-                    <option value="audio">오디오 전용 (Audio Only - m4a)</option>
-                  </select>
+                  <div className="pdf-flex-row pdf-gap-100" style={{ flexWrap: 'wrap' }}>
+                    {[
+                      { id: 'best', label: 'Best (최고 화질)' },
+                      { id: '1080p', label: '1080p' },
+                      { id: '720p', label: '720p' },
+                      { id: 'audio', label: 'Audio Only (오디오)' }
+                    ].map(opt => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setQuality(opt.id)}
+                        disabled={status === 'starting' || status === 'downloading'}
+                        style={{
+                          padding: '6px 14px',
+                          borderRadius: '20px',
+                          border: quality === opt.id ? '1px solid var(--color-functional-red)' : '1px solid var(--color-border)',
+                          backgroundColor: quality === opt.id ? 'rgba(211, 47, 47, 0.05)' : 'transparent',
+                          color: quality === opt.id ? 'var(--color-functional-red)' : 'var(--color-text-secondary)',
+                          cursor: (status === 'starting' || status === 'downloading') ? 'not-allowed' : 'pointer',
+                          fontSize: '13px',
+                          fontWeight: quality === opt.id ? 600 : 400,
+                          transition: 'all 0.2s ease',
+                          opacity: (status === 'starting' || status === 'downloading') ? 0.6 : 1
+                        }}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 {error && (
