@@ -5,9 +5,13 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import https from 'https';
+import open from 'open';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+const isPkg = typeof process.pkg !== 'undefined';
+const exeDir = isPkg ? path.dirname(process.execPath) : __dirname;
 
 const app = express();
 const PORT = 3001;
@@ -15,13 +19,13 @@ const PORT = 3001;
 app.use(cors());
 app.use(express.json());
 
-const DOWNLOAD_DIR = path.join(__dirname, 'downloads');
+const DOWNLOAD_DIR = path.join(exeDir, 'downloads');
 if (!fs.existsSync(DOWNLOAD_DIR)) {
   fs.mkdirSync(DOWNLOAD_DIR, { recursive: true });
 }
 
 const isWin = process.platform === 'win32';
-const YTDLP_BIN = path.join(__dirname, isWin ? 'yt-dlp.exe' : 'yt-dlp');
+const YTDLP_BIN = path.join(exeDir, isWin ? 'yt-dlp.exe' : 'yt-dlp');
 const YTDLP_URL = isWin 
   ? 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe'
   : (process.platform === 'darwin' ? 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos' : 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp');
@@ -220,6 +224,15 @@ app.get('/api/download/file/:jobId', (req, res) => {
   });
 });
 
+app.use(express.static(path.join(__dirname, 'dist')));
+app.get('*', (req, res) => {
+  if (!req.path.startsWith('/api')) {
+    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+  }
+});
+
 app.listen(PORT, '127.0.0.1', () => {
-  console.log(`Backend server running on http://127.0.0.1:${PORT}`);
+  console.log(`Application running on http://127.0.0.1:${PORT}`);
+  // 브라우저 자동 실행
+  open(`http://127.0.0.1:${PORT}`);
 });
