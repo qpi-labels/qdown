@@ -114,12 +114,23 @@ function App() {
 
                 <div className="pdf-flex-col pdf-gap-050">
                   <label className="pdf-text-label-14-mono pdf-text-muted">Quality</label>
-                  <div className="pdf-flex-row pdf-gap-100" style={{ flexWrap: 'wrap' }}>
+                  <div className="pdf-flex-row" style={{ 
+                    display: 'flex', 
+                    backgroundColor: 'var(--color-bg-secondary)', 
+                    border: '1px solid var(--color-border-default)', 
+                    borderRadius: '10px', 
+                    padding: '4px', 
+                    gap: '4px', 
+                    width: '100%', 
+                    overflowX: 'auto',
+                    opacity: (status === 'starting' || status === 'downloading') ? 0.6 : 1,
+                    pointerEvents: (status === 'starting' || status === 'downloading') ? 'none' : 'auto'
+                  }}>
                     {[
                       { id: 'best', label: 'Best (최고 화질)' },
                       { id: '1080p', label: '1080p' },
                       { id: '720p', label: '720p' },
-                      { id: 'audio', label: 'Audio Only (오디오)' }
+                      { id: 'audio', label: 'Audio Only' }
                     ].map(opt => (
                       <button
                         key={opt.id}
@@ -127,19 +138,24 @@ function App() {
                         onClick={() => setQuality(opt.id)}
                         disabled={status === 'starting' || status === 'downloading'}
                         style={{
-                          padding: '6px 14px',
-                          borderRadius: '20px',
-                          border: quality === opt.id ? '1px solid var(--color-functional-red)' : '1px solid var(--color-border)',
-                          backgroundColor: quality === opt.id ? 'rgba(211, 47, 47, 0.05)' : 'transparent',
+                          flex: 1,
+                          padding: '8px 16px',
+                          borderRadius: '6px',
+                          backgroundColor: quality === opt.id ? 'var(--color-bg-primary)' : 'transparent',
                           color: quality === opt.id ? 'var(--color-functional-red)' : 'var(--color-text-secondary)',
-                          cursor: (status === 'starting' || status === 'downloading') ? 'not-allowed' : 'pointer',
-                          fontSize: '13px',
-                          fontWeight: quality === opt.id ? 600 : 400,
-                          transition: 'all 0.2s ease',
-                          opacity: (status === 'starting' || status === 'downloading') ? 0.6 : 1
+                          boxShadow: quality === opt.id ? 'var(--shadow-hardware-bevel)' : 'none',
+                          transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          whiteSpace: 'nowrap',
+                          border: 'none',
+                          cursor: 'pointer'
                         }}
                       >
-                        {opt.label}
+                        <span className="pdf-text-label-14-mono" style={{ fontWeight: quality === opt.id ? '700' : '400' }}>
+                          {opt.label}
+                        </span>
                       </button>
                     ))}
                   </div>
