@@ -220,6 +220,16 @@ app.get("*", (req, res) => {
 app.listen(PORT, "127.0.0.1", () => {
   const url = `http://127.0.0.1:${PORT}`;
   console.log(`Application running on ${url}`);
-  const startCmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
-  (0, import_child_process2.exec)(`${startCmd} ${url}`);
+  if (process.platform === "win32") {
+    (0, import_child_process2.exec)(`start msedge --app=${url}`, (err) => {
+      if (err) {
+        (0, import_child_process2.exec)(`start chrome --app=${url}`, (err2) => {
+          if (err2) (0, import_child_process2.exec)(`start "" "${url}"`);
+        });
+      }
+    });
+  } else {
+    const startCmd = process.platform === "darwin" ? "open" : "xdg-open";
+    (0, import_child_process2.exec)(`${startCmd} "${url}"`);
+  }
 });

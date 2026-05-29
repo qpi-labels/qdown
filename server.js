@@ -238,7 +238,18 @@ app.get('*', (req, res) => {
 app.listen(PORT, '127.0.0.1', () => {
   const url = `http://127.0.0.1:${PORT}`;
   console.log(`Application running on ${url}`);
-  // 브라우저 자동 실행
-  const startCmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
-  exec(`${startCmd} ${url}`);
+  // 브라우저 자동 실행 (Windows에서는 앱 모드로 자체 GUI처럼 실행)
+  if (process.platform === 'win32') {
+    // msedge를 앱 모드로 실행 시도, 실패 시 크롬 앱 모드, 모두 실패 시 기본 브라우저
+    exec(`start msedge --app=${url}`, (err) => {
+      if (err) {
+        exec(`start chrome --app=${url}`, (err2) => {
+          if (err2) exec(`start "" "${url}"`);
+        });
+      }
+    });
+  } else {
+    const startCmd = process.platform === 'darwin' ? 'open' : 'xdg-open';
+    exec(`${startCmd} "${url}"`);
+  }
 });
