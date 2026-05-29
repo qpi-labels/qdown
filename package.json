@@ -8,7 +8,8 @@
     "dev:backend": "node server.js",
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "bundle:server": "npx esbuild server.js --format=cjs --outfile=dist-server/server.cjs",
-    "build:exe": "npm run build && npm run bundle:server && npx pkg .",
+    "build:exe": "npm run build && npm run bundle:server && npx pkg . --no-bytecode --public --public-packages \"*\"",
+    "build:release": "node build_release.js",
     "build": "tsc && vite build",
     "preview": "vite preview"
   },
@@ -21,13 +22,16 @@
     "react-dom": "^18.2.0",
     "youtube-dl-exec": "^3.0.1"
   },
+  "bin": "dist-server/server.cjs",
   "pkg": {
-    "scripts": "dist-server/**/*.js",
+    "scripts": "dist-server/**/*.cjs",
     "assets": [
       "dist/**/*"
     ],
     "targets": [
-      "node18-win-x64"
+      "node18-win-x64",
+      "node18-macos-x64",
+      "node18-macos-arm64"
     ]
   },
   "devDependencies": {

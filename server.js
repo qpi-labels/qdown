@@ -3,15 +3,19 @@ import cors from 'cors';
 import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
-import { fileURLToPath } from 'url';
 import https from 'https';
 import open from 'open';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Determine the current directory safely for both ESM (dev) and CJS (esbuild/pkg)
+const currentDir = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
 
 const isPkg = typeof process.pkg !== 'undefined';
-const exeDir = isPkg ? path.dirname(process.execPath) : __dirname;
+const exeDir = isPkg ? path.dirname(process.execPath) : currentDir;
+
+// When bundled by pkg, the script is in /snapshot/qdown/dist-server
+// so the static dist folder is one level up.
+const staticDir = isPkg ? path.join(currentDir, '..', 'dist') : path.join(currentDir, 'dist');
+
 
 const app = express();
 const PORT = 3001;
@@ -224,10 +228,10 @@ app.get('/api/download/file/:jobId', (req, res) => {
   });
 });
 
-app.use(express.static(path.join(__dirname, 'dist')));
+app.use(express.static(staticDir));
 app.get('*', (req, res) => {
   if (!req.path.startsWith('/api')) {
-    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+    res.sendFile(path.join(staticDir, 'index.html'));
   }
 });
 
