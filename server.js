@@ -4,7 +4,7 @@ import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import https from 'https';
-import open from 'open';
+import { exec } from 'child_process';
 
 // Determine the current directory safely for both ESM (dev) and CJS (esbuild/pkg)
 const currentDir = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
@@ -236,7 +236,9 @@ app.get('*', (req, res) => {
 });
 
 app.listen(PORT, '127.0.0.1', () => {
-  console.log(`Application running on http://127.0.0.1:${PORT}`);
+  const url = `http://127.0.0.1:${PORT}`;
+  console.log(`Application running on ${url}`);
   // 브라우저 자동 실행
-  open(`http://127.0.0.1:${PORT}`);
+  const startCmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
+  exec(`${startCmd} ${url}`);
 });

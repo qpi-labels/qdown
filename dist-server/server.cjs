@@ -27,7 +27,7 @@ var import_child_process = require("child_process");
 var import_path = __toESM(require("path"), 1);
 var import_fs = __toESM(require("fs"), 1);
 var import_https = __toESM(require("https"), 1);
-var import_open = __toESM(require("open"), 1);
+var import_child_process2 = require("child_process");
 const currentDir = typeof __dirname !== "undefined" ? __dirname : process.cwd();
 const isPkg = typeof process.pkg !== "undefined";
 const exeDir = isPkg ? import_path.default.dirname(process.execPath) : currentDir;
@@ -218,6 +218,8 @@ app.get("*", (req, res) => {
   }
 });
 app.listen(PORT, "127.0.0.1", () => {
-  console.log(`Application running on http://127.0.0.1:${PORT}`);
-  (0, import_open.default)(`http://127.0.0.1:${PORT}`);
+  const url = `http://127.0.0.1:${PORT}`;
+  console.log(`Application running on ${url}`);
+  const startCmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+  (0, import_child_process2.exec)(`${startCmd} ${url}`);
 });
