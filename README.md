@@ -71,3 +71,11 @@ npm run build:release
 
 ## 📝 라이선스
 이 프로젝트는 오픈 소스이며 MIT 라이선스 규정을 따릅니다.
+
+<br>
+
+<div align="center">
+  <a href="https://github.com/qpi-labels/pdf-ds">
+    <img src="./pdf-ds.svg" alt="pdf-ds" width="200" />
+  </a>
+</div>
