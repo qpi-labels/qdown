@@ -1,2 +1,3 @@
 @echo off
-start qdown.exe
+qdown.exe
+pause

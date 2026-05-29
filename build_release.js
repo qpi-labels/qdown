@@ -22,7 +22,7 @@ try {
       source: 'qdown-youtube-downloader-win-x64.exe',
       dest: 'qdown.exe',
       script: 'start.bat',
-      scriptContent: '@echo off\nstart qdown.exe\n'
+      scriptContent: '@echo off\nqdown.exe\npause\n'
     },
     'release-mac-x64': {
       source: 'qdown-youtube-downloader-macos-x64',
