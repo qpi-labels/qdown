@@ -76,6 +76,6 @@ npm run build:release
 
 <div align="center">
   <a href="https://github.com/qpi-labels/pdf-ds">
-    <img src="./pdf-ds.svg" alt="pdf-ds" width="200" />
+    <img src="./pdf-ds.svg" alt="pdf-ds" width="100%" />
   </a>
 </div>
