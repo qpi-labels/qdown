@@ -2,6 +2,10 @@
 
 qdown은 강력한 기능을 자랑하는 `yt-dlp` 커맨드라인 툴을 누구나 쉽게 사용할 수 있도록 만든 직관적인 그래픽 유저 인터페이스(GUI) 프로그램입니다. 복잡한 터미널 명령어 없이 유튜브 동영상을 원하는 화질로 손쉽게 다운로드하세요.
 
+## 🌟 크레딧 (Credits)
+- **[yt-dlp](https://github.com/yt-dlp/yt-dlp)**: 이 프로젝트의 핵심 엔진입니다. qdown은 `yt-dlp`의 훌륭한 기능들을 쉽게 사용하기 위한 껍데기(Wrapper)일 뿐이며, 모든 다운로드 처리와 동영상 파싱은 전적으로 위대한 `yt-dlp` 오픈소스 프로젝트 덕분입니다.
+- **디자인 시스템**: 이 앱의 깔끔하고 일관된 사용자 인터페이스(UI)는 **pdf-ds** 디자인 시스템의 철학과 규칙을 기반으로 제작되었습니다.
+
 ## ✨ 주요 기능
 - 🚀 **심플한 UI**: React 기반의 깔끔하고 직관적인 인터페이스를 제공합니다.
 - ⚙️ **화질 선택**: 1080p, 720p, 480p 비디오 및 오디오 전용(Audio Only) 다운로드를 지원합니다.
@@ -41,7 +45,7 @@ qdown은 강력한 기능을 자랑하는 `yt-dlp` 커맨드라인 툴을 누구
 
 ### 1. 코드 다운로드 및 패키지 설치
 ```bash
-git clone https://github.com/사용자이름/qdown.git
+git clone https://github.com/qpi-labels/qdown.git
 cd qdown
 npm install
 ```
