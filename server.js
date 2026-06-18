@@ -5,17 +5,40 @@ import path from 'path';
 import fs from 'fs';
 import https from 'https';
 import { exec } from 'child_process';
+import os from 'os';
 
-// Determine the current directory safely for both ESM (dev) and CJS (esbuild/pkg)
-const currentDir = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
+// Determine the current directory safely
+const isESM = typeof __dirname === 'undefined';
+const currentDir = isESM ? process.cwd() : __dirname;
 
+// Determine if we are running in Electron or PKG
 const isPkg = typeof process.pkg !== 'undefined';
-const exeDir = isPkg ? path.dirname(process.execPath) : currentDir;
+const isElectron = typeof process.versions !== 'undefined' && process.versions.electron;
 
-// When bundled by pkg, the script is in /snapshot/qdown/dist-server
-// so the static dist folder is one level up.
-const staticDir = isPkg ? path.join(currentDir, '..', 'dist') : path.join(currentDir, 'dist');
+// If we are bundled into dist-server via esbuild, the root is one level up
+const rootDir = (currentDir.endsWith('dist-server') || currentDir.endsWith('dist-server\\')) ? path.join(currentDir, '..') : currentDir;
 
+// Where to find the frontend dist folder
+const staticDir = path.join(rootDir, 'dist');
+
+const logToFile = (msg) => {
+  try {
+    const logPath = path.join(os.tmpdir(), 'qdown-crash.log');
+    fs.appendFileSync(logPath, `[SERVER LOG] ${msg}\n`);
+  } catch (e) {}
+};
+
+try {
+  const logPath = path.join(os.tmpdir(), 'qdown-crash.log');
+  fs.appendFileSync(logPath, `[SERVER INIT] currentDir: ${currentDir}\n`);
+  fs.appendFileSync(logPath, `[SERVER INIT] rootDir: ${rootDir}\n`);
+  fs.appendFileSync(logPath, `[SERVER INIT] staticDir: ${staticDir}\n`);
+  fs.appendFileSync(logPath, `[SERVER INIT] staticDir exists: ${fs.existsSync(staticDir)}\n`);
+} catch (e) {}
+
+// Where to store downloads and yt-dlp binary
+// In Electron packaged mode, we use the user's Downloads folder to avoid permission issues
+const exeDir = (isElectron && !isESM) ? path.join(os.homedir(), 'Downloads', 'qDown') : rootDir;
 
 const app = express();
 const PORT = 3001;
@@ -66,8 +89,10 @@ async function downloadYtDlp() {
 
 downloadYtDlp().then(() => {
   console.log('yt-dlp binary is ready.');
+  logToFile('yt-dlp binary is ready.');
 }).catch(err => {
   console.error('Failed to download yt-dlp binary:', err);
+  logToFile(`Failed to download yt-dlp binary: ${err.stack || err.toString()}`);
 });
 
 // Memory store for active download jobs
@@ -87,7 +112,17 @@ function getFormatString(quality) {
 }
 
 app.post('/api/download/start', (req, res) => {
-  const { url, quality } = req.body;
+  const { 
+    url, 
+    quality, 
+    downloadType, 
+    videoFormat, 
+    audioFormat, 
+    audioBitrate, 
+    downloadSubtitles,
+    downloadDir
+  } = req.body;
+
   if (!url) {
     return res.status(400).json({ error: 'URL is required' });
   }
@@ -98,27 +133,74 @@ app.post('/api/download/start', (req, res) => {
 
   const jobId = `job_${Date.now()}_${++jobCounter}`;
   const timestamp = Date.now();
-  const outputTemplate = path.join(DOWNLOAD_DIR, `${timestamp}_%(title)s.%(ext)s`);
+  
+  const targetDir = downloadDir || DOWNLOAD_DIR;
+  try {
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
+  } catch (err) {
+    console.error('Failed to create target directory:', err);
+  }
+
+  const outputTemplate = path.join(targetDir, `${timestamp}_%(title)s.%(ext)s`);
 
   jobs.set(jobId, {
     status: 'starting',
     progress: 0,
     filePrefix: `${timestamp}_`,
+    targetDir: targetDir,
     outputFile: null,
     error: null,
     clients: []
   });
 
-  const formatStr = getFormatString(quality || 'best');
   const args = [
     url,
     '-o', outputTemplate,
-    '-f', formatStr,
     '--no-warnings',
     '--newline' // Force newline output to make regex parsing reliable
   ];
 
-  console.log(`[${jobId}] Starting download: ${url} (Quality: ${quality || 'best'})`);
+  const type = downloadType || 'video';
+
+  if (type === 'audio') {
+    args.push('-f', 'bestaudio/best');
+    args.push('--extract-audio');
+    
+    const fmt = audioFormat && audioFormat !== 'default' ? audioFormat : 'mp3';
+    args.push('--audio-format', fmt);
+    
+    const qualityVal = audioBitrate && audioBitrate !== 'best' ? `${audioBitrate}k` : '0';
+    args.push('--audio-quality', qualityVal);
+  } else if (type === 'video_only') {
+    let fmt = 'bestvideo/best';
+    if (quality && quality !== 'best') {
+      const height = quality.replace('p', '');
+      fmt = `bestvideo[height<=${height}]/bestvideo`;
+    }
+    args.push('-f', fmt);
+    
+    const container = videoFormat && videoFormat !== 'default' ? videoFormat : 'mp4';
+    args.push('--merge-output-format', container);
+  } else {
+    // Video + Audio (default)
+    let fmt = 'bestvideo+bestaudio/best';
+    if (quality && quality !== 'best') {
+      const height = quality.replace('p', '');
+      fmt = `bestvideo[height<=${height}]+bestaudio/best`;
+    }
+    args.push('-f', fmt);
+    
+    const container = videoFormat && videoFormat !== 'default' ? videoFormat : 'mp4';
+    args.push('--merge-output-format', container);
+  }
+
+  if (downloadSubtitles) {
+    args.push('--write-subs', '--sub-langs', 'ko,en', '--embed-subs');
+  }
+
+  console.log(`[${jobId}] Starting download: ${url} (Args: ${args.slice(1).join(' ')})`);
 
   const child = spawn(YTDLP_BIN, args);
   
@@ -153,7 +235,7 @@ app.post('/api/download/start', (req, res) => {
 
     if (code === 0) {
       // Find the finalized file
-      const files = fs.readdirSync(DOWNLOAD_DIR);
+      const files = fs.readdirSync(job.targetDir);
       const downloadedFile = files.find(f => f.startsWith(job.filePrefix));
       
       if (downloadedFile) {
@@ -176,6 +258,9 @@ app.post('/api/download/start', (req, res) => {
     setTimeout(() => {
       job.clients.forEach(c => c.end());
       job.clients = [];
+      if (isElectron) {
+        jobs.delete(jobId);
+      }
     }, 3000);
   });
 
@@ -205,6 +290,10 @@ app.get('/api/download/stream/:jobId', (req, res) => {
   });
 });
 
+app.get('/api/download/default-dir', (req, res) => {
+  res.json({ defaultDir: DOWNLOAD_DIR });
+});
+
 app.get('/api/download/file/:jobId', (req, res) => {
   const jobId = req.params.jobId;
   const job = jobs.get(jobId);
@@ -213,7 +302,7 @@ app.get('/api/download/file/:jobId', (req, res) => {
     return res.status(404).json({ error: 'File not ready or job not found' });
   }
 
-  const filePath = path.join(DOWNLOAD_DIR, job.outputFile);
+  const filePath = path.join(job.targetDir, job.outputFile);
   
   res.download(filePath, job.outputFile, (err) => {
     if (err) console.error(`[${jobId}] Error sending file:`, err);
@@ -235,21 +324,17 @@ app.get('*', (req, res) => {
   }
 });
 
-app.listen(PORT, '127.0.0.1', () => {
+const server = app.listen(PORT, '127.0.0.1', () => {
   const url = `http://127.0.0.1:${PORT}`;
   console.log(`Application running on ${url}`);
-  // 브라우저 자동 실행 (Windows에서는 앱 모드로 자체 GUI처럼 실행)
-  if (process.platform === 'win32') {
-    // msedge를 앱 모드로 실행 시도, 실패 시 크롬 앱 모드, 모두 실패 시 기본 브라우저
-    exec(`start msedge --app=${url}`, (err) => {
-      if (err) {
-        exec(`start chrome --app=${url}`, (err2) => {
-          if (err2) exec(`start "" "${url}"`);
-        });
-      }
-    });
+  logToFile(`Express server started and listening on ${url}`);
+});
+
+server.on('error', (err) => {
+  logToFile(`Express server error event: ${err.code || err.toString()} - ${err.stack || err.toString()}`);
+  if (err.code === 'EADDRINUSE') {
+    console.warn(`Port ${PORT} is already in use. Assuming the backend is already running.`);
   } else {
-    const startCmd = process.platform === 'darwin' ? 'open' : 'xdg-open';
-    exec(`${startCmd} "${url}"`);
+    console.error('Server error:', err);
   }
 });

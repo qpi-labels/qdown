@@ -1,16 +1,17 @@
 {
   "name": "qdown-youtube-downloader",
-  "private": true,
-  "version": "1.0.0",
+  "productName": "qDown",
+  "version": "1.1.0",
   "type": "module",
+  "main": "dist-server/electron-main.cjs",
   "scripts": {
     "dev:frontend": "vite --port=3000 --host=0.0.0.0",
     "dev:backend": "node server.js",
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
-    "bundle:server": "npx esbuild server.js --format=cjs --outfile=dist-server/server.cjs",
-    "build:exe": "npm run build && npm run bundle:server && npx pkg . --no-bytecode --public --public-packages \"*\"",
-    "build:release": "node build_release.js",
+    "dev:electron": "concurrently \"npm run dev:frontend\" \"wait-on tcp:3000 && electron .\"",
     "build": "tsc && vite build",
+    "bundle:server": "npx esbuild server.js --bundle --platform=node --external:electron --format=cjs --outfile=dist-server/server.cjs && npx esbuild electron-main.cjs --bundle --platform=node --external:electron --format=cjs --outfile=dist-server/electron-main.cjs && npx esbuild preload.js --bundle --platform=node --external:electron --format=cjs --outfile=dist-server/preload.cjs",
+    "build:app": "npm run build && npm run bundle:server && electron-builder",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -22,17 +23,32 @@
     "react-dom": "^18.2.0",
     "youtube-dl-exec": "^3.0.1"
   },
-  "bin": "dist-server/server.cjs",
-  "pkg": {
-    "scripts": "dist-server/**/*.cjs",
-    "assets": [
-      "dist/**/*"
+  "build": {
+    "appId": "com.qdown.app",
+    "productName": "qDown",
+    "directories": {
+      "output": "release-app"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-server/**/*",
+      "package.json",
+      "node_modules/**/*"
     ],
-    "targets": [
-      "node18-win-x64",
-      "node18-macos-x64",
-      "node18-macos-arm64"
-    ]
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "qDown",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "mac": {
+      "target": "dmg"
+    }
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
@@ -42,7 +58,10 @@
     "@types/react-dom": "^18.2.17",
     "@vitejs/plugin-react": "^4.2.1",
     "concurrently": "^8.2.2",
+    "electron": "^30.0.0",
+    "electron-builder": "^24.13.3",
     "typescript": "^5.2.2",
-    "vite": "^5.0.8"
+    "vite": "^5.0.8",
+    "wait-on": "^7.2.0"
   }
 }

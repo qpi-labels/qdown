@@ -654,3 +654,95 @@ button {
   background-color: var(--color-functional-red);
   color: var(--color-bg-primary);
 }
+
+/* ==========================================================================
+   9. CUSTOM TITLEBAR
+   ========================================================================== */
+.pdf-titlebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 32px;
+  background-color: var(--color-bg-primary);
+  border-bottom: 1px solid var(--color-border-default);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 1000;
+  padding-left: 10px;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-app-region: drag;
+}
+
+.pdf-titlebar-left {
+  display: flex;
+  align-items: center;
+  -webkit-app-region: no-drag;
+}
+
+.pdf-titlebar-settings-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  border: 1px solid var(--color-border-default);
+  background-color: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  transition: all 0.2s;
+  cursor: pointer;
+}
+
+.pdf-titlebar-settings-btn:hover:not(:disabled) {
+  border-color: var(--color-border-hover);
+  background-color: var(--color-bg-primary);
+}
+
+.pdf-titlebar-settings-btn:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+.pdf-titlebar-center {
+  font-family: var(--font-sans);
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  color: var(--color-text-primary);
+  font-size: 15px;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none; /* Let drag events pass through to the titlebar */
+}
+
+.pdf-titlebar-right {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  -webkit-app-region: no-drag;
+}
+
+.pdf-titlebar-win-btn {
+  width: 46px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-primary);
+  transition: background-color 0.2s;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.pdf-titlebar-win-btn:hover {
+  background-color: var(--color-bg-secondary);
+}
+
+.pdf-titlebar-close-btn:hover {
+  background-color: var(--color-functional-red) !important;
+  color: #ffffff !important;
+}

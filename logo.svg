@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <!-- Strong Industrial Shadows for the PDF-DS Hardware look -->
+    <filter id="pdf-hardware-shadow" x="-10%" y="-10%" width="130%" height="130%" filterUnits="userSpaceOnUse">
+      <!-- Deep solid drop shadow (simulating a thick physical metal badge) -->
+      <feDropShadow dx="0" dy="12" stdDeviation="0" flood-color="#09090B" flood-opacity="1"/>
+      <feDropShadow dx="0" dy="16" stdDeviation="10" flood-color="#000000" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <!-- Heavy, Bold 'q' Structure (Transparent center via EvenOdd fill rule) -->
+  <path 
+    fill-rule="evenodd" 
+    clip-rule="evenodd" 
+    d="M 160,96 
+       H 312 
+       C 347.3,96 376,124.7 376,160 
+       H 416 
+       V 370 
+       C 416,400 396,420 366,420 
+       H 336 
+       C 316,420 300,404 300,384 
+       V 350 
+       H 160 
+       C 124.7,350 96,321.3 96,286 
+       V 160 
+       C 96,124.7 124.7,96 160,96 Z 
+       M 236,156 
+       C 280.2,156 316,191.8 316,236 
+       C 316,280.2 280.2,316 236,316 
+       C 191.8,316 156,280.2 156,236 
+       C 156,191.8 191.8,156 236,156 Z" 
+    fill="#AD1D1D" 
+    stroke="#09090B" 
+    stroke-width="16" 
+    stroke-linejoin="miter"
+    filter="url(#pdf-hardware-shadow)"
+  />
+
+  <!-- Bold, Sturdy Central Download Arrow -->
+  <path 
+    d="M 236,296 
+       L 186,246 
+       H 216 
+       V 176 
+       H 256 
+       V 246 
+       H 286 
+       Z" 
+    fill="#FFFFFF" 
+    stroke="#09090B" 
+    stroke-width="14" 
+    stroke-linejoin="miter"
+  />
+</svg>
