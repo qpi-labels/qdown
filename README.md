@@ -39,11 +39,31 @@ qdown은 강력한 기능을 자랑하는 `yt-dlp` 커맨드라인 툴을 누구
 - [Node.js](https://nodejs.org/) (v18 이상 권장)
 
 ### 1. 코드 다운로드 및 패키지 설치
+
+소스 코드를 다운로드하는 방법은 두 가지가 있습니다.
+
+#### 방법 A: Git Clone 사용 (원격 저장소 기여 및 연동 필요 시)
 ```bash
 git clone https://github.com/qpi-labels/qdown.git
 cd qdown
 npm install
 ```
+
+#### 방법 B: 독립적인 소스코드 사용 (기존 리포지토리 및 Source Control 연동 해제 필요 시)
+다른 사용자가 코드를 받아 개별적으로 사용할 때 기존 원격 저장소와 자꾸 연동되는 것을 방지하려면, **[Releases](../../releases) 페이지에서 제공하는 `qdown-[버전]-source.zip` 파일을 다운로드**하여 사용하시는 것을 권장합니다. 해당 압축 파일에는 `.git` 폴더가 제외되어 있어 독자적인 작업이 가능합니다. (또는 `git clone` 완료 후 루트 경로의 숨김 폴더인 `.git`을 수동으로 삭제하셔도 됩니다.)
+```bash
+# 압축 해제 후 해당 폴더에서 패키지 설치
+npm install
+```
+
+---
+
+### 📦 배포자용: 소스코드 ZIP 패키지 생성 방법
+깃허브 Releases 등에 소스코드를 업로드하여 공유할 때, 개인 Git 히스토리(`.git`) 및 불필요한 빌드 아티팩트를 제외한 순수 소스코드 파일만 압축하려면 아래 명령어를 사용합니다:
+```bash
+npm run package:source
+```
+* 실행 완료 시 프로젝트 루트 디렉토리에 `.git`, `node_modules`, `dist`, `dist-server`, `release-app`, `downloads` 등이 모두 안전하게 제외된 **`qdown-[버전]-source.zip`** 파일이 생성됩니다. 이 압축 파일을 깃허브 릴리즈의 첨부 파일로 업로드하시면 다운로드하는 사람들의 소스 제어 연동을 완벽하게 방지할 수 있습니다.
 
 ### 2. 개발 모드로 실행
 프론트엔드(Vite)와 백엔드(Express) 그리고 데스크톱 앱(Electron)을 동시에 개발 모드로 띄웁니다:
