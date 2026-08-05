@@ -48,6 +48,50 @@ function App() {
   });
   const [defaultDir, setDefaultDir] = useState<string>('');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [videoPreview, setVideoPreview] = useState<{ id: string; title: string; thumbnail: string; author: string } | null>(null);
+
+  useEffect(() => {
+    const extractVideoId = (inputUrl: string) => {
+      if (!inputUrl) return null;
+      const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)/;
+      const match = inputUrl.match(regExp);
+      if (match && match[0]) {
+        const parts = inputUrl.split(regExp);
+        if (parts[2]) {
+          return parts[2].split(/[^a-zA-Z0-9_-]/)[0];
+        }
+      }
+      const shortsMatch = inputUrl.match(/youtube\.com\/shorts\/([a-zA-Z0-9_-]+)/);
+      if (shortsMatch && shortsMatch[1]) {
+        return shortsMatch[1];
+      }
+      return null;
+    };
+
+    const videoId = extractVideoId(url);
+    if (videoId) {
+      fetch(`https://noembed.com/embed?url=${encodeURIComponent(url)}`)
+        .then(res => res.json())
+        .then(data => {
+          setVideoPreview({
+            id: videoId,
+            title: data.title || `YouTube Video (${videoId})`,
+            thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
+            author: data.author_name || 'YouTube',
+          });
+        })
+        .catch(() => {
+          setVideoPreview({
+            id: videoId,
+            title: `YouTube Video (${videoId})`,
+            thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
+            author: 'YouTube',
+          });
+        });
+    } else {
+      setVideoPreview(null);
+    }
+  }, [url]);
 
   useEffect(() => {
     fetch('/api/download/default-dir')
@@ -427,6 +471,31 @@ function App() {
                   disabled={status === 'starting' || status === 'downloading'}
                   required
                 />
+
+                {/* Video Preview Card when valid YouTube URL is entered */}
+                {videoPreview && (
+                  <div
+                    className="pdf-flex-row pdf-gap-150 pdf-items-center pdf-animate-fade-in"
+                    style={{
+                      padding: '10px 12px',
+                      borderRadius: '8px',
+                      backgroundColor: 'var(--color-bg-secondary)',
+                      border: '1px solid var(--color-border-default)',
+                    }}
+                  >
+                    <img
+                      src={videoPreview.thumbnail}
+                      alt={videoPreview.title}
+                      style={{ width: '80px', height: '45px', objectFit: 'cover', borderRadius: '4px' }}
+                    />
+                    <div className="pdf-flex-col" style={{ overflow: 'hidden' }}>
+                      <span className="pdf-text-label-14-mono" style={{ fontSize: '13px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {videoPreview.title}
+                      </span>
+                      <span className="pdf-text-copy-13-mono pdf-text-muted">{videoPreview.author}</span>
+                    </div>
+                  </div>
+                )}
 
                 <div className="pdf-flex-col pdf-gap-050">
                   <label className="pdf-text-label-14-mono pdf-text-muted">Quality</label>
