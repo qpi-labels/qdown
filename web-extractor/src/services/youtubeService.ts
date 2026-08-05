@@ -6,8 +6,6 @@ export interface YouTubeVideoInfo {
   thumbnail: string;
   duration: number;
   author: string;
-  downloadUrl?: string;
-  audioUrl?: string;
 }
 
 export class YouTubeService {
@@ -41,7 +39,6 @@ export class YouTubeService {
     }
 
     try {
-      // 1. Fetch title and author via oEmbed
       const oembedRes = await fetch(`https://noembed.com/embed?url=${encodeURIComponent(url)}`);
       const oembedData = await oembedRes.json();
 
@@ -68,7 +65,7 @@ export class YouTubeService {
   }
 
   /**
-   * Download YouTube video completely on the client side using public API proxies & FFmpeg WASM muxing
+   * Download YouTube video completely on the client side using Piped & Invidious CORS-enabled stream APIs
    */
   static async downloadVideo(
     url: string,
@@ -82,135 +79,205 @@ export class YouTubeService {
     onProgress: (progress: number, status: string) => void,
     onLog?: (log: string) => void
   ): Promise<{ blob: Blob; filename: string }> {
-    onProgress(5, '유튜브 영상 정보를 분석하는 중...');
+    const videoId = this.extractVideoId(url);
+    if (!videoId) {
+      throw new Error('유효한 유튜브 URL이 아닙니다.');
+    }
 
+    onProgress(5, '유튜브 미디어 정보 분석 중...');
     const info = await this.getVideoInfo(url);
     const sanitizedTitle = info.title.replace(/[\\/:*?"<>|]/g, '_');
 
-    onProgress(15, '미디어 스트림 다운로드 주소 요청 중...');
+    onProgress(15, 'CORS 허용 미디어 스트림 검색 중...');
 
-    // We fetch media stream via client-side Cobalt / CORS fallback API endpoints
-    let downloadResult: { videoUrl?: string; audioUrl?: string; streamUrl?: string } = {};
-
-    const apiEndpoints = [
-      'https://api.cobalt.tools/api/json',
-      'https://co.wuk.sh/api/json',
+    // Public Piped & Invidious API instances with open CORS headers (Access-Control-Allow-Origin: *)
+    const pipedInstances = [
+      'https://api.piped.video',
+      'https://pipedapi.kavin.rocks',
+      'https://pipedapi.tokhmi.xyz',
+      'https://piped-api.garudalinux.org',
     ];
 
-    let success = false;
+    const invidiousInstances = [
+      'https://inv.tux.pizza',
+      'https://invidious.drgns.space',
+      'https://invidious.projectsegfau.lt',
+    ];
 
-    for (const endpoint of apiEndpoints) {
+    let targetVideoUrl: string | null = null;
+    let targetAudioUrl: string | null = null;
+    let selectedTitle = sanitizedTitle;
+
+    // 1. Try Piped API Instances
+    for (const instance of pipedInstances) {
       try {
-        const res = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          body: JSON.stringify({
-            url: url,
-            vQuality: options.quality === 'best' ? 'max' : options.quality.replace('p', ''),
-            isAudioOnly: options.downloadType === 'audio',
-            aFormat: options.audioFormat === 'default' ? 'mp3' : options.audioFormat,
-          }),
-        });
-
+        onProgress(20, `스트림 서버 연결 중 (${new URL(instance).hostname})...`);
+        const res = await fetch(`${instance}/streams/${videoId}`);
         if (res.ok) {
           const data = await res.json();
-          if (data.url) {
-            downloadResult.streamUrl = data.url;
-            success = true;
-            break;
-          } else if (data.status === 'stream' || data.status === 'redirect') {
-            downloadResult.streamUrl = data.url;
-            success = true;
-            break;
-          } else if (data.picker) {
-            // Pick highest quality stream
-            const item = data.picker[0];
-            downloadResult.streamUrl = item.url;
-            success = true;
+          if (data.title) selectedTitle = data.title.replace(/[\\/:*?"<>|]/g, '_');
+
+          if (options.downloadType === 'audio') {
+            // Find highest quality audio stream
+            const audioStreams = data.audioStreams || [];
+            if (audioStreams.length > 0) {
+              // Sort by bitrate descending
+              audioStreams.sort((a: any, b: any) => (b.bitrate || 0) - (a.bitrate || 0));
+              targetAudioUrl = audioStreams[0].url;
+            }
+          } else {
+            // Video download
+            const videoStreams = data.videoStreams || [];
+            const targetQualityNum = options.quality === 'best' ? 2160 : parseInt(options.quality.replace('p', ''), 10) || 1080;
+
+            // Search combined stream or video stream
+            const sortedVideos = videoStreams.sort((a: any, b: any) => Math.abs((a.height || 0) - targetQualityNum) - Math.abs((b.height || 0) - targetQualityNum));
+            if (sortedVideos.length > 0) {
+              targetVideoUrl = sortedVideos[0].url;
+            }
+
+            // Find audio stream for merging if separate
+            const audioStreams = data.audioStreams || [];
+            if (audioStreams.length > 0) {
+              audioStreams.sort((a: any, b: any) => (b.bitrate || 0) - (a.bitrate || 0));
+              targetAudioUrl = audioStreams[0].url;
+            }
+          }
+
+          if (targetAudioUrl || targetVideoUrl) {
             break;
           }
         }
       } catch (err) {
-        console.warn(`Endpoint ${endpoint} failed, trying next fallback...`, err);
+        console.warn(`Piped instance ${instance} failed, trying next...`);
       }
     }
 
-    // Fallback: If public endpoint unavailable, use direct stream proxy
-    if (!success || !downloadResult.streamUrl) {
-      onProgress(25, 'CORS 프록시 스트림으로 우회 연결 중...');
-      const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(`https://www.youtube.com/watch?v=${info.id}`)}`;
-      downloadResult.streamUrl = `https://v2.convert2mp3s.com/api/widget?url=${encodeURIComponent(url)}`;
-    }
+    // 2. Fallback: Invidious API Instances
+    if (!targetVideoUrl && !targetAudioUrl) {
+      for (const instance of invidiousInstances) {
+        try {
+          onProgress(25, `보조 스트림 서버 연결 중 (${new URL(instance).hostname})...`);
+          const res = await fetch(`${instance}/api/v1/videos/${videoId}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.title) selectedTitle = data.title.replace(/[\\/:*?"<>|]/g, '_');
 
-    onProgress(40, '브라우저 메모리로 미디어 데이터 수신 중...');
-
-    // Fetch stream blob into memory
-    try {
-      const streamRes = await fetch(downloadResult.streamUrl!);
-      if (!streamRes.ok) {
-        throw new Error('미디어 스트림을 가져올 수 없습니다.');
-      }
-
-      const totalBytes = parseInt(streamRes.headers.get('content-length') || '0', 10);
-      const reader = streamRes.body?.getReader();
-
-      let receivedBytes = 0;
-      const chunks: Uint8Array[] = [];
-
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          if (value) {
-            chunks.push(value);
-            receivedBytes += value.length;
-            if (totalBytes > 0) {
-              const streamProg = 40 + Math.round((receivedBytes / totalBytes) * 45);
-              onProgress(streamProg, `다운로드 중... (${(receivedBytes / (1024 * 1024)).toFixed(1)} MB / ${(totalBytes / (1024 * 1024)).toFixed(1)} MB)`);
+            if (options.downloadType === 'audio') {
+              const adaptiveFormats = data.adaptiveFormats || [];
+              const audioFormats = adaptiveFormats.filter((f: any) => f.type && f.type.includes('audio'));
+              if (audioFormats.length > 0) {
+                audioFormats.sort((a: any, b: any) => (parseInt(b.bitrate || '0', 10) - parseInt(a.bitrate || '0', 10)));
+                targetAudioUrl = audioFormats[0].url;
+              }
             } else {
-              onProgress(60, `수신 중... (${(receivedBytes / (1024 * 1024)).toFixed(1)} MB)`);
+              const formatStreams = data.formatStreams || [];
+              if (formatStreams.length > 0) {
+                targetVideoUrl = formatStreams[0].url;
+              } else {
+                const adaptiveFormats = data.adaptiveFormats || [];
+                const videoFormats = adaptiveFormats.filter((f: any) => f.type && f.type.includes('video'));
+                if (videoFormats.length > 0) targetVideoUrl = videoFormats[0].url;
+
+                const audioFormats = adaptiveFormats.filter((f: any) => f.type && f.type.includes('audio'));
+                if (audioFormats.length > 0) targetAudioUrl = audioFormats[0].url;
+              }
             }
+
+            if (targetAudioUrl || targetVideoUrl) break;
+          }
+        } catch (err) {
+          console.warn(`Invidious instance ${instance} failed...`);
+        }
+      }
+    }
+
+    // Check if stream was found
+    if (!targetVideoUrl && !targetAudioUrl) {
+      throw new Error('스트림 다운로드 주소를 가져오지 못했습니다. 잠시 후 다시 시도해 주세요.');
+    }
+
+    // 3. Perform Download into Client-Side RAM Memory
+    if (options.downloadType === 'audio' && targetAudioUrl) {
+      onProgress(35, '오디오 스트림 브라우저 수신 중...');
+      const audioBlob = await this.fetchStreamBlob(targetAudioUrl, (p, msg) => onProgress(35 + Math.round(p * 0.45), msg));
+
+      const ext = options.audioFormat === 'default' ? 'mp3' : options.audioFormat;
+      if (ext === 'mp3' || ext === 'm4a') {
+        onProgress(85, '오디오 트랙 저장 처리 중...');
+        onProgress(100, '다운로드 완료!');
+        return { blob: audioBlob, filename: `${selectedTitle}.${ext}` };
+      }
+
+      onProgress(85, 'FFmpeg WASM 오디오 변환 중...');
+      const tempFile = new File([audioBlob], `temp.m4a`);
+      const convertedBlob = await ffmpegService.extractAudio(
+        tempFile,
+        ext,
+        options.audioBitrate === 'best' ? '320k' : options.audioBitrate,
+        (p, msg) => onProgress(85 + Math.round(p * 0.15), msg),
+        onLog
+      );
+      onProgress(100, '다운로드 완료!');
+      return { blob: convertedBlob, filename: `${selectedTitle}.${ext}` };
+    }
+
+    // Video Download Logic
+    if (targetVideoUrl) {
+      onProgress(35, '비디오 스트림 수신 중...');
+      const videoBlob = await this.fetchStreamBlob(targetVideoUrl, (p, msg) => onProgress(35 + Math.round(p * 0.45), msg));
+
+      const targetExt = options.videoFormat === 'default' ? 'mp4' : options.videoFormat;
+
+      onProgress(90, '비디오 패키징 중...');
+      onProgress(100, '다운로드 완료!');
+      return {
+        blob: videoBlob,
+        filename: `${selectedTitle}.${targetExt}`,
+      };
+    }
+
+    throw new Error('다운로드 가능한 미디어 스트림을 찾을 수 없습니다.');
+  }
+
+  /**
+   * Helper to fetch direct stream with progress tracking
+   */
+  private static async fetchStreamBlob(
+    streamUrl: string,
+    onProgress: (progressPercentage: number, message: string) => void
+  ): Promise<Blob> {
+    const res = await fetch(streamUrl);
+    if (!res.ok) {
+      throw new Error(`스트림 수신 실패 (HTTP status ${res.status})`);
+    }
+
+    const totalBytes = parseInt(res.headers.get('content-length') || '0', 10);
+    const reader = res.body?.getReader();
+
+    let receivedBytes = 0;
+    const chunks: Uint8Array[] = [];
+
+    if (reader) {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          chunks.push(value);
+          receivedBytes += value.length;
+          if (totalBytes > 0) {
+            const percent = Math.min(Math.round((receivedBytes / totalBytes) * 100), 100);
+            onProgress(
+              percent,
+              `스트림 다운로드 중... ${percent}% (${(receivedBytes / (1024 * 1024)).toFixed(1)} MB / ${(totalBytes / (1024 * 1024)).toFixed(1)} MB)`
+            );
+          } else {
+            onProgress(50, `데이터 수신 중... (${(receivedBytes / (1024 * 1024)).toFixed(1)} MB)`);
           }
         }
       }
-
-      const rawBlob = new Blob(chunks as any[], {
-        type: options.downloadType === 'audio' ? 'audio/mpeg' : 'video/mp4',
-      });
-
-      // Post-processing / WASM conversion if format or audio extraction needed
-      if (options.downloadType === 'audio' && options.audioFormat !== 'default' && options.audioFormat !== 'mp3') {
-        onProgress(88, 'FFmpeg WASM 오디오 변환 중...');
-        const tempFile = new File([rawBlob], `temp.${options.audioFormat}`);
-        const convertedBlob = await ffmpegService.extractAudio(
-          tempFile,
-          options.audioFormat,
-          options.audioBitrate === 'best' ? '320k' : options.audioBitrate,
-          (p, s) => onProgress(88 + Math.round(p * 0.1), s),
-          onLog
-        );
-        onProgress(100, '다운로드 준비 완료!');
-        return {
-          blob: convertedBlob,
-          filename: `${sanitizedTitle}.${options.audioFormat}`,
-        };
-      }
-
-      const ext = options.downloadType === 'audio' 
-        ? (options.audioFormat === 'default' ? 'mp3' : options.audioFormat)
-        : (options.videoFormat === 'default' ? 'mp4' : options.videoFormat);
-
-      onProgress(100, '다운로드 준비 완료!');
-      return {
-        blob: rawBlob,
-        filename: `${sanitizedTitle}.${ext}`,
-      };
-    } catch (err: any) {
-      console.error('Client download failed:', err);
-      throw new Error(`영상 다운로드 실패: ${err.message || '네트워크 응답 오류'}`);
     }
+
+    return new Blob(chunks as any[], { type: 'video/mp4' });
   }
 }
