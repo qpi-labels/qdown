@@ -22,6 +22,12 @@ async function fetchWithCorsProxy(targetUrl: string, init?: RequestInit): Promis
 
   // 2. CORS Proxy Fallbacks
   const proxyGenerators = [
+    (u: string) => {
+      const baseUrl = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+        ? 'https://qdown.qpi.digital' 
+        : '';
+      return `${baseUrl}/api/proxy?url=${encodeURIComponent(u)}`;
+    },
     (u: string) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
     (u: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
   ];
@@ -181,9 +187,10 @@ export class YouTubeService {
     // Method 2: Piped API via CORS Proxy fallback
     if (!targetVideoUrl && !targetAudioUrl) {
       const pipedInstances = [
-        'https://api.piped.video',
         'https://pipedapi.kavin.rocks',
-        'https://piped-api.garudalinux.org',
+        'https://api.piped.projectsegfau.lt',
+        'https://pipedapi.in.projectsegfau.lt',
+        'https://pipedapi.us.projectsegfau.lt',
       ];
 
       for (const instance of pipedInstances) {

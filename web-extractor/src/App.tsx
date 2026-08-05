@@ -249,7 +249,7 @@ export function App() {
       {/* Main View Container */}
       <div className="pdf-main-view">
         <div className="pdf-main-content pdf-flex-col pdf-items-center pdf-justify-center" style={{ minHeight: 'calc(100vh - 32px)', margin: '0 auto' }}>
-          
+
           {/* Main Card Panel (Exact qDown App Panel) */}
           <div className="pdf-panel pdf-w-full" style={{ maxWidth: '600px' }}>
             <div className="pdf-panel-header pdf-flex-row pdf-items-center pdf-gap-150">
@@ -590,7 +590,7 @@ export function App() {
                   onMouseOver={(e) => (e.currentTarget.style.color = 'var(--color-text-primary)')}
                   onMouseOut={(e) => (e.currentTarget.style.color = 'var(--color-text-secondary)')}
                 >
-                  qDown 앱 다운로드 ↗
+                  더 빠른 qDown 앱 다운로드 ↗
                 </a>
               </div>
             </div>
