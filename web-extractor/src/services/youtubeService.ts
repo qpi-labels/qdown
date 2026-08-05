@@ -8,6 +8,37 @@ export interface YouTubeVideoInfo {
   author: string;
 }
 
+/**
+ * Universal fetch wrapper with CORS Proxy fallbacks for web browser compatibility
+ */
+async function fetchWithCorsProxy(targetUrl: string, init?: RequestInit): Promise<Response> {
+  // 1. Direct fetch attempt
+  try {
+    const res = await fetch(targetUrl, init);
+    if (res.ok) return res;
+  } catch (err) {
+    // CORS or network error, fallback to proxy
+  }
+
+  // 2. CORS Proxy Fallbacks
+  const proxyGenerators = [
+    (u: string) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
+    (u: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+  ];
+
+  for (const genProxy of proxyGenerators) {
+    try {
+      const proxyUrl = genProxy(targetUrl);
+      const res = await fetch(proxyUrl, init);
+      if (res.ok) return res;
+    } catch (err) {
+      console.warn(`CORS Proxy failed for ${targetUrl}, trying next proxy...`);
+    }
+  }
+
+  throw new Error(`CORS 프록시 우회 연결에 실패했습니다: ${targetUrl}`);
+}
+
 export class YouTubeService {
   /**
    * Extract video ID from various YouTube URL formats
@@ -30,7 +61,7 @@ export class YouTubeService {
   }
 
   /**
-   * Fetch video metadata using oEmbed and public client endpoints
+   * Fetch video metadata using oEmbed
    */
   static async getVideoInfo(url: string): Promise<YouTubeVideoInfo> {
     const videoId = this.extractVideoId(url);
@@ -39,7 +70,7 @@ export class YouTubeService {
     }
 
     try {
-      const oembedRes = await fetch(`https://noembed.com/embed?url=${encodeURIComponent(url)}`);
+      const oembedRes = await fetchWithCorsProxy(`https://noembed.com/embed?url=${encodeURIComponent(url)}`);
       const oembedData = await oembedRes.json();
 
       const title = oembedData.title || `YouTube Video (${videoId})`;
@@ -65,7 +96,7 @@ export class YouTubeService {
   }
 
   /**
-   * Download YouTube video completely on the client side using Piped & Invidious CORS-enabled stream APIs
+   * Download YouTube video on client side using CORS Proxy & Android Innertube + Piped + Invidious APIs
    */
   static async downloadVideo(
     url: string,
@@ -88,129 +119,118 @@ export class YouTubeService {
     const info = await this.getVideoInfo(url);
     const sanitizedTitle = info.title.replace(/[\\/:*?"<>|]/g, '_');
 
-    onProgress(15, 'CORS 허용 미디어 스트림 검색 중...');
-
-    // Public Piped & Invidious API instances with open CORS headers (Access-Control-Allow-Origin: *)
-    const pipedInstances = [
-      'https://api.piped.video',
-      'https://pipedapi.kavin.rocks',
-      'https://pipedapi.tokhmi.xyz',
-      'https://piped-api.garudalinux.org',
-    ];
-
-    const invidiousInstances = [
-      'https://inv.tux.pizza',
-      'https://invidious.drgns.space',
-      'https://invidious.projectsegfau.lt',
-    ];
+    onProgress(15, '미디어 스트림 주소 탐색 중...');
 
     let targetVideoUrl: string | null = null;
     let targetAudioUrl: string | null = null;
-    let selectedTitle = sanitizedTitle;
 
-    // 1. Try Piped API Instances
-    for (const instance of pipedInstances) {
-      try {
-        onProgress(20, `스트림 서버 연결 중 (${new URL(instance).hostname})...`);
-        const res = await fetch(`${instance}/streams/${videoId}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.title) selectedTitle = data.title.replace(/[\\/:*?"<>|]/g, '_');
+    // Method 1: YouTube Android Innertube API via CORS Proxy
+    try {
+      onProgress(20, '유튜브 렌더링 엔진 직접 수신 중...');
+      const playerRes = await fetchWithCorsProxy('https://www.youtube.com/youtubei/v1/player', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          videoId: videoId,
+          context: {
+            client: {
+              clientName: 'ANDROID',
+              clientVersion: '19.02.39',
+              androidSdkVersion: 30,
+            },
+          },
+        }),
+      });
+
+      if (playerRes.ok) {
+        const playerData = await playerRes.json();
+        const streamingData = playerData.streamingData;
+
+        if (streamingData) {
+          const formats = streamingData.formats || [];
+          const adaptiveFormats = streamingData.adaptiveFormats || [];
 
           if (options.downloadType === 'audio') {
-            // Find highest quality audio stream
-            const audioStreams = data.audioStreams || [];
-            if (audioStreams.length > 0) {
-              // Sort by bitrate descending
-              audioStreams.sort((a: any, b: any) => (b.bitrate || 0) - (a.bitrate || 0));
-              targetAudioUrl = audioStreams[0].url;
+            const audioFormats = adaptiveFormats.filter((f: any) => f.mimeType && f.mimeType.includes('audio'));
+            if (audioFormats.length > 0) {
+              audioFormats.sort((a: any, b: any) => (b.bitrate || 0) - (a.bitrate || 0));
+              targetAudioUrl = audioFormats[0].url || null;
             }
           } else {
-            // Video download
-            const videoStreams = data.videoStreams || [];
+            // Find video format matching quality
             const targetQualityNum = options.quality === 'best' ? 2160 : parseInt(options.quality.replace('p', ''), 10) || 1080;
-
-            // Search combined stream or video stream
-            const sortedVideos = videoStreams.sort((a: any, b: any) => Math.abs((a.height || 0) - targetQualityNum) - Math.abs((b.height || 0) - targetQualityNum));
-            if (sortedVideos.length > 0) {
-              targetVideoUrl = sortedVideos[0].url;
+            const combinedMatches = formats.filter((f: any) => f.url);
+            
+            if (combinedMatches.length > 0) {
+              combinedMatches.sort((a: any, b: any) => Math.abs((a.height || 0) - targetQualityNum) - Math.abs((b.height || 0) - targetQualityNum));
+              targetVideoUrl = combinedMatches[0].url;
+            } else {
+              const videoFormats = adaptiveFormats.filter((f: any) => f.url && f.mimeType && f.mimeType.includes('video'));
+              if (videoFormats.length > 0) {
+                videoFormats.sort((a: any, b: any) => Math.abs((a.height || 0) - targetQualityNum) - Math.abs((b.height || 0) - targetQualityNum));
+                targetVideoUrl = videoFormats[0].url;
+              }
             }
-
-            // Find audio stream for merging if separate
-            const audioStreams = data.audioStreams || [];
-            if (audioStreams.length > 0) {
-              audioStreams.sort((a: any, b: any) => (b.bitrate || 0) - (a.bitrate || 0));
-              targetAudioUrl = audioStreams[0].url;
-            }
-          }
-
-          if (targetAudioUrl || targetVideoUrl) {
-            break;
           }
         }
-      } catch (err) {
-        console.warn(`Piped instance ${instance} failed, trying next...`);
       }
+    } catch (err) {
+      console.warn('Innertube direct fetch failed, trying Piped/Invidious proxies...', err);
     }
 
-    // 2. Fallback: Invidious API Instances
+    // Method 2: Piped API via CORS Proxy fallback
     if (!targetVideoUrl && !targetAudioUrl) {
-      for (const instance of invidiousInstances) {
+      const pipedInstances = [
+        'https://api.piped.video',
+        'https://pipedapi.kavin.rocks',
+        'https://piped-api.garudalinux.org',
+      ];
+
+      for (const instance of pipedInstances) {
         try {
-          onProgress(25, `보조 스트림 서버 연결 중 (${new URL(instance).hostname})...`);
-          const res = await fetch(`${instance}/api/v1/videos/${videoId}`);
+          onProgress(25, `보조 미디어 서버 연결 중 (${new URL(instance).hostname})...`);
+          const res = await fetchWithCorsProxy(`${instance}/streams/${videoId}`);
           if (res.ok) {
             const data = await res.json();
-            if (data.title) selectedTitle = data.title.replace(/[\\/:*?"<>|]/g, '_');
-
             if (options.downloadType === 'audio') {
-              const adaptiveFormats = data.adaptiveFormats || [];
-              const audioFormats = adaptiveFormats.filter((f: any) => f.type && f.type.includes('audio'));
-              if (audioFormats.length > 0) {
-                audioFormats.sort((a: any, b: any) => (parseInt(b.bitrate || '0', 10) - parseInt(a.bitrate || '0', 10)));
-                targetAudioUrl = audioFormats[0].url;
+              const audioStreams = data.audioStreams || [];
+              if (audioStreams.length > 0) {
+                audioStreams.sort((a: any, b: any) => (b.bitrate || 0) - (a.bitrate || 0));
+                targetAudioUrl = audioStreams[0].url;
               }
             } else {
-              const formatStreams = data.formatStreams || [];
-              if (formatStreams.length > 0) {
-                targetVideoUrl = formatStreams[0].url;
-              } else {
-                const adaptiveFormats = data.adaptiveFormats || [];
-                const videoFormats = adaptiveFormats.filter((f: any) => f.type && f.type.includes('video'));
-                if (videoFormats.length > 0) targetVideoUrl = videoFormats[0].url;
-
-                const audioFormats = adaptiveFormats.filter((f: any) => f.type && f.type.includes('audio'));
-                if (audioFormats.length > 0) targetAudioUrl = audioFormats[0].url;
+              const videoStreams = data.videoStreams || [];
+              if (videoStreams.length > 0) {
+                targetVideoUrl = videoStreams[0].url;
               }
             }
-
             if (targetAudioUrl || targetVideoUrl) break;
           }
         } catch (err) {
-          console.warn(`Invidious instance ${instance} failed...`);
+          console.warn(`Piped instance ${instance} failed...`);
         }
       }
     }
 
-    // Check if stream was found
     if (!targetVideoUrl && !targetAudioUrl) {
-      throw new Error('스트림 다운로드 주소를 가져오지 못했습니다. 잠시 후 다시 시도해 주세요.');
+      throw new Error('스트림 다운로드 주소를 가져오지 못했습니다. URL을 확인해 주세요.');
     }
 
-    // 3. Perform Download into Client-Side RAM Memory
-    if (options.downloadType === 'audio' && targetAudioUrl) {
-      onProgress(35, '오디오 스트림 브라우저 수신 중...');
-      const audioBlob = await this.fetchStreamBlob(targetAudioUrl, (p, msg) => onProgress(35 + Math.round(p * 0.45), msg));
+    // 3. Download Media Stream Chunks into Client-Side RAM
+    const streamToFetch = targetAudioUrl || targetVideoUrl!;
+    onProgress(35, '브라우저 메모리로 데이터 수신 중...');
 
+    const mediaBlob = await this.fetchStreamBlob(streamToFetch, (p, msg) => onProgress(35 + Math.round(p * 0.5), msg));
+
+    if (options.downloadType === 'audio') {
       const ext = options.audioFormat === 'default' ? 'mp3' : options.audioFormat;
       if (ext === 'mp3' || ext === 'm4a') {
-        onProgress(85, '오디오 트랙 저장 처리 중...');
         onProgress(100, '다운로드 완료!');
-        return { blob: audioBlob, filename: `${selectedTitle}.${ext}` };
+        return { blob: mediaBlob, filename: `${sanitizedTitle}.${ext}` };
       }
 
-      onProgress(85, 'FFmpeg WASM 오디오 변환 중...');
-      const tempFile = new File([audioBlob], `temp.m4a`);
+      onProgress(85, 'FFmpeg WASM 오디오 인코딩 중...');
+      const tempFile = new File([mediaBlob], `temp.m4a`);
       const convertedBlob = await ffmpegService.extractAudio(
         tempFile,
         ext,
@@ -219,35 +239,25 @@ export class YouTubeService {
         onLog
       );
       onProgress(100, '다운로드 완료!');
-      return { blob: convertedBlob, filename: `${selectedTitle}.${ext}` };
+      return { blob: convertedBlob, filename: `${sanitizedTitle}.${ext}` };
     }
 
-    // Video Download Logic
-    if (targetVideoUrl) {
-      onProgress(35, '비디오 스트림 수신 중...');
-      const videoBlob = await this.fetchStreamBlob(targetVideoUrl, (p, msg) => onProgress(35 + Math.round(p * 0.45), msg));
-
-      const targetExt = options.videoFormat === 'default' ? 'mp4' : options.videoFormat;
-
-      onProgress(90, '비디오 패키징 중...');
-      onProgress(100, '다운로드 완료!');
-      return {
-        blob: videoBlob,
-        filename: `${selectedTitle}.${targetExt}`,
-      };
-    }
-
-    throw new Error('다운로드 가능한 미디어 스트림을 찾을 수 없습니다.');
+    const targetExt = options.videoFormat === 'default' ? 'mp4' : options.videoFormat;
+    onProgress(100, '다운로드 완료!');
+    return {
+      blob: mediaBlob,
+      filename: `${sanitizedTitle}.${targetExt}`,
+    };
   }
 
   /**
-   * Helper to fetch direct stream with progress tracking
+   * Fetch stream data blob with CORS proxy wrapper and progress tracking
    */
   private static async fetchStreamBlob(
     streamUrl: string,
     onProgress: (progressPercentage: number, message: string) => void
   ): Promise<Blob> {
-    const res = await fetch(streamUrl);
+    const res = await fetchWithCorsProxy(streamUrl);
     if (!res.ok) {
       throw new Error(`스트림 수신 실패 (HTTP status ${res.status})`);
     }
