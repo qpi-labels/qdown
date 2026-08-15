@@ -24191,6 +24191,57 @@ if (!import_fs.default.existsSync(DOWNLOAD_DIR)) {
 var isWin = process.platform === "win32";
 var YTDLP_BIN = import_path.default.join(exeDir, isWin ? "yt-dlp.exe" : "yt-dlp");
 var YTDLP_URL = isWin ? "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" : process.platform === "darwin" ? "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos" : "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp";
+var detectedFfmpegPath = null;
+function findFfmpeg() {
+  const localBin = import_path.default.join(exeDir, isWin ? "ffmpeg.exe" : "ffmpeg");
+  if (import_fs.default.existsSync(localBin)) return localBin;
+  const rootBin = import_path.default.join(rootDir, isWin ? "ffmpeg.exe" : "ffmpeg");
+  if (import_fs.default.existsSync(rootBin)) return rootBin;
+  try {
+    const cmd = isWin ? "where ffmpeg" : "which ffmpeg";
+    const output = (0, import_child_process.execSync)(cmd, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    if (output) {
+      const firstPath = output.split(/\r?\n/)[0].trim();
+      if (import_fs.default.existsSync(firstPath)) return firstPath;
+    }
+  } catch (e) {
+  }
+  if (isWin) {
+    try {
+      const wingetDir = import_path.default.join(import_os.default.homedir(), "AppData", "Local", "Microsoft", "WinGet", "Packages");
+      if (import_fs.default.existsSync(wingetDir)) {
+        const entries = import_fs.default.readdirSync(wingetDir);
+        for (const entry of entries) {
+          if (entry.toLowerCase().includes("ffmpeg")) {
+            const possiblePath = import_path.default.join(wingetDir, entry);
+            const findExe = (dir, depth = 0) => {
+              if (depth > 3) return null;
+              const files = import_fs.default.readdirSync(dir);
+              for (const f of files) {
+                const full = import_path.default.join(dir, f);
+                try {
+                  const stat = import_fs.default.statSync(full);
+                  if (stat.isDirectory()) {
+                    const res = findExe(full, depth + 1);
+                    if (res) return res;
+                  } else if (f.toLowerCase() === "ffmpeg.exe") {
+                    return full;
+                  }
+                } catch (err) {
+                }
+              }
+              return null;
+            };
+            const found = findExe(possiblePath);
+            if (found) return found;
+          }
+        }
+      }
+    } catch (e) {
+    }
+  }
+  return null;
+}
 async function downloadYtDlp() {
   if (import_fs.default.existsSync(YTDLP_BIN)) return;
   console.log(`Downloading yt-dlp binary for ${process.platform}...`);
@@ -24218,12 +24269,93 @@ async function downloadYtDlp() {
     import_https.default.get(YTDLP_URL, handleResponse).on("error", handleError);
   });
 }
+async function downloadFfmpeg() {
+  detectedFfmpegPath = findFfmpeg();
+  if (detectedFfmpegPath) {
+    console.log(`FFmpeg found at: ${detectedFfmpegPath}`);
+    logToFile(`FFmpeg found at: ${detectedFfmpegPath}`);
+    return detectedFfmpegPath;
+  }
+  const targetBin = import_path.default.join(exeDir, isWin ? "ffmpeg.exe" : "ffmpeg");
+  if (import_fs.default.existsSync(targetBin)) {
+    detectedFfmpegPath = targetBin;
+    return targetBin;
+  }
+  console.log(`Downloading ffmpeg for ${process.platform}...`);
+  logToFile(`Downloading ffmpeg for ${process.platform}...`);
+  const zipUrl = isWin ? "https://github.com/ffbinaries/ffbinaries-prebuilt/releases/download/v6.1/ffmpeg-6.1-win-64.zip" : process.platform === "darwin" ? "https://github.com/ffbinaries/ffbinaries-prebuilt/releases/download/v6.1/ffmpeg-6.1-osx-64.zip" : "https://github.com/ffbinaries/ffbinaries-prebuilt/releases/download/v6.1/ffmpeg-6.1-linux-64.zip";
+  const tempZip = import_path.default.join(exeDir, "ffmpeg-download.zip");
+  try {
+    await new Promise((resolve, reject) => {
+      const file = import_fs.default.createWriteStream(tempZip);
+      const handleResponse = (response) => {
+        if (response.statusCode === 301 || response.statusCode === 302) {
+          import_https.default.get(response.headers.location, handleResponse).on("error", handleError);
+        } else if (response.statusCode === 200) {
+          response.pipe(file);
+          file.on("finish", () => {
+            file.close();
+            resolve();
+          });
+        } else {
+          handleError(new Error(`Failed to download ffmpeg, status code: ${response.statusCode}`));
+        }
+      };
+      const handleError = (err) => {
+        try {
+          import_fs.default.unlinkSync(tempZip);
+        } catch (e) {
+        }
+        reject(err);
+      };
+      import_https.default.get(zipUrl, handleResponse).on("error", handleError);
+    });
+    await new Promise((resolve, reject) => {
+      const extractCmd = isWin ? `tar -xf "${tempZip}" -C "${exeDir}"` : `unzip -o "${tempZip}" -d "${exeDir}"`;
+      (0, import_child_process.exec)(extractCmd, (err) => {
+        try {
+          import_fs.default.unlinkSync(tempZip);
+        } catch (e) {
+        }
+        if (err) {
+          if (isWin) {
+            (0, import_child_process.exec)(`powershell -Command "Expand-Archive -Path '${tempZip}' -DestinationPath '${exeDir}' -Force"`, (psErr) => {
+              if (psErr) reject(psErr);
+              else resolve();
+            });
+          } else {
+            reject(err);
+          }
+        } else {
+          if (!isWin && import_fs.default.existsSync(targetBin)) {
+            import_fs.default.chmodSync(targetBin, 493);
+          }
+          resolve();
+        }
+      });
+    });
+    if (import_fs.default.existsSync(targetBin)) {
+      detectedFfmpegPath = targetBin;
+      console.log("FFmpeg binary is ready.");
+      logToFile("FFmpeg binary is ready.");
+      return targetBin;
+    }
+  } catch (err) {
+    console.error("Failed to download FFmpeg binary:", err);
+    logToFile(`Failed to download FFmpeg binary: ${err.stack || err.toString()}`);
+  }
+}
 downloadYtDlp().then(() => {
   console.log("yt-dlp binary is ready.");
   logToFile("yt-dlp binary is ready.");
 }).catch((err) => {
   console.error("Failed to download yt-dlp binary:", err);
   logToFile(`Failed to download yt-dlp binary: ${err.stack || err.toString()}`);
+});
+downloadFfmpeg().then(() => {
+  console.log("FFmpeg check completed.");
+}).catch((err) => {
+  console.error("FFmpeg check error:", err);
 });
 var jobs = /* @__PURE__ */ new Map();
 var jobCounter = 0;
@@ -24272,6 +24404,10 @@ app.post("/api/download/start", (req, res) => {
     "--newline"
     // Force newline output to make regex parsing reliable
   ];
+  const ffmpegLoc = detectedFfmpegPath || findFfmpeg();
+  if (ffmpegLoc) {
+    args.push("--ffmpeg-location", ffmpegLoc);
+  }
   const type = downloadType || "video";
   if (type === "audio") {
     args.push("-f", "bestaudio/best");
@@ -24332,7 +24468,12 @@ app.post("/api/download/start", (req, res) => {
     if (!job) return;
     if (code === 0) {
       const files = import_fs.default.readdirSync(job.targetDir);
-      const downloadedFile = files.find((f) => f.startsWith(job.filePrefix));
+      const jobFiles = files.filter((f) => f.startsWith(job.filePrefix));
+      const validFiles = jobFiles.filter((f) => !f.endsWith(".part") && !f.endsWith(".ytdl") && !f.endsWith(".temp"));
+      let downloadedFile = validFiles.find((f) => !/\.f\d+\.[a-zA-Z0-9]+$/.test(f));
+      if (!downloadedFile && validFiles.length > 0) {
+        downloadedFile = validFiles[0];
+      }
       if (downloadedFile) {
         job.status = "completed";
         job.progress = 100;

@@ -47,7 +47,10 @@ const excludePatterns = [
   'release-app',
   'downloads',
   'yt-dlp.exe',
-  zipName, // Exclude the zip we are currently creating
+  'yt-dlp',
+  'ffmpeg.exe',
+  'ffmpeg',
+  'ffmpeg-download.zip',
 ];
 
 // Read root directory and append files
@@ -57,13 +60,19 @@ for (const item of items) {
   if (excludePatterns.includes(item)) {
     continue;
   }
+  if (item.endsWith('.zip') || item.endsWith('.part') || item.endsWith('.ytdl') || item.endsWith('.mp4') || item.endsWith('.webm') || item.endsWith('.mp3')) {
+    continue;
+  }
   
   const fullPath = path.join(rootDir, item);
   const stat = fs.statSync(fullPath);
   
   if (stat.isDirectory()) {
     console.log(`Adding directory: ${item}/`);
-    archive.directory(fullPath, item);
+    archive.glob('**/*', {
+      cwd: fullPath,
+      ignore: ['**/node_modules/**', '**/dist/**', '**/dist-server/**', '**/.git/**', '**/*.part', '**/*.zip', '**/*.exe']
+    }, { prefix: item });
   } else {
     console.log(`Adding file:      ${item}`);
     archive.file(fullPath, { name: item });
