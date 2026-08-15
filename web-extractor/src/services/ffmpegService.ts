@@ -221,6 +221,64 @@ class FFmpegService {
     return new Blob([new Uint8Array(data as Uint8Array)], { type: `video/${targetFormat}` });
   }
 
+  // 5. Merge Video + Audio Streams (Zero-Re-encode fast muxing using client CPU/WASM)
+  async mergeVideoAndAudio(
+    videoBlob: Blob,
+    audioBlob: Blob,
+    outputFormat: string = 'mp4',
+    onProgress?: ProgressCallback,
+    onLog?: LogCallback
+  ): Promise<Blob> {
+    const ffmpeg = await this.load(onProgress, onLog);
+    const videoExt = videoBlob.type.includes('webm') ? 'webm' : 'mp4';
+    const audioExt = audioBlob.type.includes('webm') ? 'webm' : audioBlob.type.includes('mp4') ? 'm4a' : 'm4a';
+    const videoName = `video_${Date.now()}.${videoExt}`;
+    const audioName = `audio_${Date.now()}.${audioExt}`;
+    const outputName = `merged_${Date.now()}.${outputFormat}`;
+
+    onProgress?.(10, '스트림 데이터를 브라우저 가상 메모리에 기록 중...');
+    await ffmpeg.writeFile(videoName, await fetchFile(videoBlob));
+    await ffmpeg.writeFile(audioName, await fetchFile(audioBlob));
+
+    onProgress?.(40, '비디오와 오디오 트랙을 고속 합성(Muxing)하는 중...');
+
+    const isInputWebm = videoExt === 'webm';
+    const isOutputWebm = outputFormat === 'webm';
+
+    const args: string[] = ['-i', videoName, '-i', audioName];
+
+    if (isInputWebm && !isOutputWebm) {
+      // VP9/WebM to MP4 container conversion
+      args.push('-c:v', 'copy', '-c:a', 'aac', '-strict', 'experimental', '-shortest', outputName);
+    } else if (isOutputWebm) {
+      args.push('-c:v', 'copy', '-c:a', 'libopus', '-shortest', outputName);
+    } else {
+      args.push('-c:v', 'copy', '-c:a', 'aac', '-shortest', outputName);
+    }
+
+    try {
+      await ffmpeg.exec(args);
+    } catch (muxErr) {
+      // Fallback: full copy
+      await ffmpeg.exec(['-i', videoName, '-i', audioName, '-c', 'copy', outputName]);
+    }
+
+    onProgress?.(90, '완성된 영상 파일 추출 중...');
+    const data = await ffmpeg.readFile(outputName);
+
+    await ffmpeg.deleteFile(videoName);
+    await ffmpeg.deleteFile(audioName);
+    await ffmpeg.deleteFile(outputName);
+
+    const mimeMap: Record<string, string> = {
+      mp4: 'video/mp4',
+      webm: 'video/webm',
+      mkv: 'video/x-matroska'
+    };
+
+    return new Blob([new Uint8Array(data as Uint8Array)], { type: mimeMap[outputFormat] || 'video/mp4' });
+  }
+
   private getFileExtension(filename: string): string {
     return filename.split('.').pop() || 'mp4';
   }
